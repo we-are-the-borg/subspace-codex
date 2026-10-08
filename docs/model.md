@@ -2,7 +2,7 @@
 
 The plugins ship the mapping documents to `$ROOT/model/<source>.json` (contract §12); the apps' interpreters are still to come.
 
-**The idea.** Event files stay exactly as contract v1 defines them: the agent's raw payload, byte for byte, in the v1 envelope. subspace additionally publishes one **mapping document** per source ([`model/claude-code.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.0.0/model/claude-code.json), [`model/codex.json`](../model/codex.json)). It says where in the raw payload each **target field** is. Apps apply it with a small generic interpreter (§5). When an agent changes its payloads, subspace changes the mapping document and releases; the apps need no update.
+**The idea.** Event files stay exactly as contract v1 defines them: the agent's raw payload, byte for byte, in the v1 envelope. subspace additionally publishes one **mapping document** per source ([`model/claude-code.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.0.1/model/claude-code.json), [`model/codex.json`](../model/codex.json)). It says where in the raw payload each **target field** is. Apps apply it with a small generic interpreter (§5). When an agent changes its payloads, subspace changes the mapping document and releases; the apps need no update.
 
 The result of applying a mapping to one payload looks like this:
 
@@ -393,15 +393,15 @@ Anything else an app wants is still in `payload`; reading it there couples that 
 
 ## 11. JSON Schemas
 
-- `schema/<source>/result.v1.json` ([Claude Code](https://github.com/we-are-the-borg/subspace/blob/codex-1.0.0/schema/claude-code/result.v1.json), `$id` `urn:subspace:result:claude-code:v1`; [Codex](https://github.com/we-are-the-borg/subspace/blob/codex-1.0.0/schema/codex/result.v1.json), `urn:subspace:result:codex:v1`): the result of applying that source's mapping: the core (§2), identical in both (`tests/model.test.py` checks it), plus that source's block. Blocks are closed, so a mapping can't produce a field the target model doesn't define; adding a target field ships mapping and schema together.
-- [`schema/claude-code/session-status.v1.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.0.0/schema/claude-code/session-status.v1.json) (`$id` `urn:subspace:session-status:claude-code:v1`): the result of applying a session-status mapping (§12), closed like the result schema.
+- `schema/<source>/result.v1.json` ([Claude Code](https://github.com/we-are-the-borg/subspace/blob/codex-1.0.1/schema/claude-code/result.v1.json), `$id` `urn:subspace:result:claude-code:v1`; [Codex](https://github.com/we-are-the-borg/subspace/blob/codex-1.0.1/schema/codex/result.v1.json), `urn:subspace:result:codex:v1`): the result of applying that source's mapping: the core (§2), identical in both (`tests/model.test.py` checks it), plus that source's block. Blocks are closed, so a mapping can't produce a field the target model doesn't define; adding a target field ships mapping and schema together.
+- [`schema/claude-code/session-status.v1.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.0.1/schema/claude-code/session-status.v1.json) (`$id` `urn:subspace:session-status:claude-code:v1`): the result of applying a session-status mapping (§12), closed like the result schema.
 - [`schema/mapping.v1.json`](../schema/mapping.v1.json) (`$id` `urn:subspace:mapping:v1`): a mapping document. It is closed for this repository's own documents, so CI catches typos. Interpreters in the apps still follow §5.1 (unknown keys → field absent), so a newer document with new operations degrades instead of failing.
 
 `schema/*.json` (envelope, mapping) ship in every adapter, `schema/<source>/*.json` only in that source's adapter (`tools/sync.sh`); all land flat in `$ROOT/schema/`. A schema change thereby releases only the adapters it concerns.
 
 ## 12. Session status (Claude Code)
 
-Claude Code keeps one **session status file** per running process, `<config dir>/sessions/<pid>.json` (contract §13). It is a side source: subspace never reads or writes it, it documents it and ships a mapping for it, [`model/claude-code-session.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.0.0/model/claude-code-session.json) (`document: session-status`). Apps apply it to the file's content exactly like a hook mapping to a payload. Evidence: the status snapshots of `fixtures/claude-code/2.1.287/` (S1–S9).
+Claude Code keeps one **session status file** per running process, `<config dir>/sessions/<pid>.json` (contract §13). It is a side source: subspace never reads or writes it, it documents it and ships a mapping for it, [`model/claude-code-session.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.0.1/model/claude-code-session.json) (`document: session-status`). Apps apply it to the file's content exactly like a hook mapping to a payload. Evidence: the status snapshots of `fixtures/claude-code/2.1.287/` (S1–S9).
 
 ### 12.1 Fields
 

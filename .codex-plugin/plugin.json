@@ -1,9 +1,19 @@
 {
   "name": "subspace",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Writes every hook event, unchanged, into a shared folder that local apps read. Async hooks; silent exit 0, no decisions or model context.",
   "author": {
     "name": "Andreas Wehr"
   },
-  "repository": "https://github.com/we-are-the-borg/subspace"
+  "repository": "https://github.com/we-are-the-borg/subspace",
+  "interface": {
+    "displayName": "subspace",
+    "shortDescription": "Observe-only hook events",
+    "developerName": "Andreas Wehr",
+    "category": "Developer Tools",
+    "websiteURL": "https://github.com/we-are-the-borg/subspace",
+    "privacyPolicyURL": "https://github.com/we-are-the-borg/subspace/blob/main/PRIVACY.md",
+    "logo": "./assets/icon.png",
+    "composerIcon": "./assets/icon.png"
+  }
 }
