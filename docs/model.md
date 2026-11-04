@@ -2,7 +2,7 @@
 
 The plugins ship the mapping documents to `$ROOT/model/<source>.json` (contract §12); the apps' interpreters are still to come.
 
-**The idea.** Event files stay exactly as contract v1 defines them: the agent's raw payload, byte for byte, in the v1 envelope. subspace additionally publishes one **mapping document** per source ([`model/claude-code.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.0.1/model/claude-code.json), [`model/codex.json`](../model/codex.json)). It says where in the raw payload each **target field** is. Apps apply it with a small generic interpreter (§5). When an agent changes its payloads, subspace changes the mapping document and releases; the apps need no update.
+**The idea.** Event files stay exactly as contract v1 defines them: the agent's raw payload, byte for byte, in the v1 envelope. subspace additionally publishes one **mapping document** per source ([`model/claude-code.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.1.0/model/claude-code.json), [`model/codex.json`](../model/codex.json)). It says where in the raw payload each **target field** is. Apps apply it with a small generic interpreter (§5). When an agent changes its payloads, subspace changes the mapping document and releases; the apps need no update.
 
 The result of applying a mapping to one payload looks like this:
 
@@ -16,12 +16,13 @@ It is a small **core** with the same meaning for every source, plus **one block 
 
 **What the mapping solves and what it doesn't.** It answers "where is the value": a renamed, moved or newly added key is handled by changing the mapping alone. It doesn't answer "what does it mean": when an event changes its meaning or new semantics arrive (for example a link field that enables a new correlation rule), apps still change their logic.
 
-**Evidence.** Every mapping is derived from the real captures in `fixtures/claude-code/2.1.285/`, `fixtures/claude-code/2.1.287/`, `fixtures/claude-code/2.1.288/`, `fixtures/claude-code/2.1.289/` and `fixtures/codex/0.159.3/`, and nothing else. Short references: **C2-014** is `fixtures/claude-code/2.1.285/2-…/events/014-*.json`, **S4-010** is `fixtures/claude-code/2.1.287/4-…/events/010-*.json` or `…/status/010-status.json` (S15 is in `2.1.288/15-…`, S16–S18 in `2.1.289/16-…` to `18-…`), **X1-008** is `fixtures/codex/0.159.3/1-…/events/008-*.json`. The runs:
+**Evidence.** Every mapping is derived from the real captures in `fixtures/claude-code/2.1.285/`, `fixtures/claude-code/2.1.287/`, `fixtures/claude-code/2.1.288/`, `fixtures/claude-code/2.1.289/`, `fixtures/claude-code/2.1.316/` and `fixtures/codex/0.159.3/`, and nothing else. Short references: **C2-014** is `fixtures/claude-code/2.1.285/2-…/events/014-*.json`, **S4-010** is `fixtures/claude-code/2.1.287/4-…/events/010-*.json` or `…/status/010-status.json` (S15 is in `2.1.288/15-…`, S16–S18 in `2.1.289/16-…` to `18-…`, S19 and S20 in `2.1.316/19-…` and `20-…`), **X1-008** is `fixtures/codex/0.159.3/1-…/events/008-*.json`. The runs:
 
 - Claude Code 2.1.285: C1 headless parallel subagents; C2 interactive background subagents, compact and exit; C3 permission and Ctrl-C.
 - Claude Code 2.1.287, hook events plus session status files (§12): S1 idle and exit; S2 Esc and Ctrl-C mid-turn; S3 Esc mid-tool; S4 permission and question waits; S5 `!` shell; S6 background subagents; S6a background shell, exit dialog, killed; S7 `--continue`; S8 `kill -9`; S9 `claude -p`; S11 `/exit` without a prompt; S12 failing tool; S13 file tools; S14 terminated before any input.
 - Claude Code 2.1.288, hook events plus session status files: S15 a background agent stopped by the user (Ctrl+X Ctrl+K).
 - Claude Code 2.1.289, hook events plus session status files: S16 two `Agent` calls, one with `model: haiku`, one without; S17 `/model sonnet`, then `/clear` in the same process; S18 `--continue` of S17's session with `--model haiku`.
+- Claude Code 2.1.316, hook events plus session status files: S19 `AskUserQuestion` answered with `multiSelect`, free text and a note, then dismissed with Esc; S20 a multi-line `Bash` command (heredoc) behind a permission prompt.
 - Codex: X1 parallel and reused children plus a failed command; X2 daemon permission and compact; X3 manual permission and rejection; X4/X5 interrupt before a tool; X6/X7 interrupt of a running shell; X8 resume; X9 ephemeral; X10 cwd with spaces.
 
 ## 1. Principles
@@ -122,6 +123,8 @@ Unobserved hooks get their kind and the fields that hold on every hook (`transcr
 | `tool_name` | string | `tool_name` on `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest` | C1-005, C3-006, S12-009 |
 | `tool_input` | **opaque** | `tool_input`, same hooks | C1-005, C3-006 |
 | `file_path` | string | `tool_input.file_path` of `Write`, `Edit`, `Read`, same hooks: the file a tool writes or reads | S13-008, S13-011, S13-014, C3-005 |
+| `command` | string | `tool_input.command` of `Bash`, same hooks: the whole command, **multi-line kept** (a heredoc stays one string with its line breaks). Same name and shape as Codex's `command`; apps show it wrapped, never truncated | S4-009, S4-010, S4-013, S12-009, S20-009, S20-010, S20-012 |
+| `command_description` | string | `tool_input.description` of `Bash`, same hooks: the agent's one-line label for the command, written by the model. Absent when the call has none | S4-009, S20-010; absent C1-009, S15-012 |
 | `tool_response` | **opaque** | `tool_response` on `PostToolUse` | C1-011, C1-016 |
 | `duration_ms` | integer | `duration_ms` on `PostToolUse`, `PostToolUseFailure` | C1-013, S12-009 |
 | `error` | string | `error` on `PostToolUseFailure`, e.g. `Exit code 1` plus stderr | S12-009 |
@@ -132,12 +135,17 @@ Unobserved hooks get their kind and the fields that hold on every hook (`transcr
 | `spawned_agent` | non-empty string | `tool_response.agentId` on `PostToolUse` of `Agent`; equals the subagent's core `agent` | C1-016, C2-008 |
 | `spawned_async` | boolean | `tool_response.isAsync` on `PostToolUse` of `Agent` | C2-008 `true` |
 | `spawned_model` | string | `tool_response.resolvedModel` on `PostToolUse` of `Agent`: the full model ID the subagent runs with, also when inherited; the only place an inherited model shows | S16-012 `claude-haiku-4-5-20251001` (alias `haiku`), S16-011 `claude-sonnet-5-5` (inherited); C1-016, C2-008, S15-010 |
+| `spawned_shell` | non-empty string | `tool_response.backgroundTaskId` on `PostToolUse` of `Bash`: a call with `run_in_background` started a background shell; equals that shell's `id` in `background_shells`. Absent for foreground calls | S6a-016; absent S6a-018 |
+| `questions` | array of objects | every `tool_input.questions` entry, whole, on `PreToolUse`, `PermissionRequest`, `PostToolUse` of `AskUserQuestion`: the questions the agent asks the user. Entries are Claude Code's; observed keys `question`, `header`, `options` (each `label`, `description`, optionally `preview`), `multiSelect`; read them defensively | S4-026, S4-028, S4-031, S19-008, S19-020 (`preview`), S19-024 |
+| `answers` | object | `tool_response.answers` on `PostToolUse` of `AskUserQuestion`: one string per answered question, **keyed by the question text** (`questions[].question`). See §3.3 "Questions" | S4-031 `Red`, S19-013, S19-024 |
+| `annotations` | object | `tool_response.annotations` on `PostToolUse` of `AskUserQuestion`: keyed by the question text like `answers`; observed `{"preview", "notes"}` when the user added a note to a choice, else `{}` | S19-024; `{}` S4-031, S19-013 |
 | `notification_message`, `notification_type` | string | `message`, `notification_type` on `Notification` | C3-007 |
 | `agent_transcript_path` | string | `agent_transcript_path` on `SubagentStop` | C1-015 |
 | `parent_tool_use_id` | non-empty string | `parent_tool_use_id` on `SubagentStart`/`SubagentStop`; **documented, not sent by 2.1.285** | – |
 | `last_assistant_message` | string | `last_assistant_message` on `Stop`, `SubagentStop` | C1-015, C1-020; absent C2-027 |
 | `background_tasks` | array, **opaque** entries | `background_tasks` on `Stop`, `SubagentStop` | C2-014, C2-020 |
 | `background_agents` | array of non-empty strings | `id` of every `background_tasks` entry with `type: subagent`, same hooks: the core `agent` of each background subagent still running. `[]` when none runs; absent when `background_tasks` is | S6a-013 (a `shell` entry left out), S15-013, S15-018 `[]` |
+| `background_shells` | array of objects | every `background_tasks` entry with `type: shell`, whole, same hooks: the background shells still running. Entries are Claude Code's; observed keys `id`, `type`, `status`, `description`, `command`, read them defensively. `[]` when none runs; absent when `background_tasks` is | S6a-020, S6a-021, S6a-024; `[]` S6a-013 |
 | `compact_trigger` | string | `trigger` on `PreCompact`, `PostCompact` | C2-029, C2-033 |
 | `compact_summary` | string | `compact_summary` on `PostCompact` | C2-033 |
 | `from_model`, `to_model` | string | `from_model`, `to_model` on `PostModelSwitch` | C2-030 |
@@ -159,6 +167,7 @@ Left in `payload` because no app uses them today: `scratchpad_dir`, `Instruction
   3. `spawned_agent` on the `Agent` post equals the subagent's `agent`. Background launches have `spawned_async: true` and post right after the launch (C2-008); foreground ones post only after the subagent stopped (C1-016 after C1-015).
   The parent of a subagent is the core `agent` of its `Agent` call (absent: the root). Never assign by order.
 - **Background agents.** A `turn.start` whose `prompt` starts with `<task-notification>` (C2-021, C2-024, S6a-023) or `<agent-message ` (S6-025, S6-034; the subagent called the tool `SubagentHandback` first, S6-023) carries a background agent's result, not a user prompt. In 2.1.287 interactive `Agent` calls without `run_in_background` were launched async (S6-010, S6-017, S6a-010). `background_tasks` is a snapshot of running background agents; observed entries have `id` (= `agent`), `type` (`subagent`), `status`, `description`, `agent_type` (C2-014), or `type: shell` with `command` instead of `agent_type` (S6a-020); `status` was always `running`. `background_agents` lists the subagents' IDs.
+- **Background shells.** A `Bash` call with `run_in_background` posts right away with `spawned_shell` (S6a-016), the `id` its entry in `background_shells` carries from then on (S6a-020). The shell outlives the turn: S6a-024 still lists it after the last `turn.stop`, while the session status file shows `shell` (§12.2). No hook event marks its end, and no snapshot comes while no turn runs (S6a ends with the session killed and the shell still listed). A normal end and a shell stopped by the user are unobserved. Apps take a shell as ended when a later snapshot of the same `session` no longer lists it; while no turn runs, the only signal is the session status file leaving `shell` (§12.2), which means every shell has ended.
 - **Stopped background agents.** A background agent stopped by the user (S15: Ctrl+X Ctrl+K) sends **no `agent.stop`**, and its running tool no `tool.post` (S15-012). It is only missing from the next snapshot: S15-013 has it in `background_agents`, S15-018 has `[]`. Rules for apps:
   - Only background agents appear in the snapshot (`spawned_async: true` on their `Agent` post); a foreground subagent is never in it (C1-015). Never end one by its absence.
   - A background agent missing from the `background_agents` of a root `turn.stop` or an `agent.stop` of the same `session` has ended, if that event's envelope `ts` is later than the one of the agent's `Agent` post (same second: keep it open; `ts` has seconds and async hooks are written late). Arrival order is only a hint (contract §6).
@@ -170,6 +179,10 @@ Left in `payload` because no app uses them today: `scratchpad_dir`, `Instruction
   - **`resume` doesn't.** `--continue`/`--resume` starts a new process whose model comes from its own flags and settings, not from the resumed session (S18: S17's session last ran on Sonnet; resumed with `--model haiku`, it answered with `claude-haiku-4-5-20251001`, and S18-003 has no `model`). Never take the model from earlier events of that `session`. It stays unknown until a `model.change` of the new process.
   - Headless sessions name no model at all (C1-001, S9-004).
   - Subagents name their own model (`spawn_model`, `spawned_model`); it is never the session's.
+- **Questions** (`AskUserQuestion`, S4, S19). The call's `tool.pre` and its `permission.request` both carry `questions`; the session waits for the user from then on (session status `waiting`, `input needed`, §12). A `notification` with `notification_type: permission_prompt` follows only after about 6 s (S19-011), none when the user answers sooner (S19, second call). Rules for apps:
+  - **Answered:** the `tool.post` (block `tool.post`, same `tool_call`) carries `questions` again plus `answers` and `annotations`. Tie an answer to its question by the question text: `answers[questions[i].question]`. A question without a key in `answers` is unanswered.
+  - An answer is **one string** in every case: a single choice is its `label` (S19-024 `List`); a `multiSelect` answer joins the chosen labels with `", "` (S19-013 `apple, cherry`), so a label containing `", "` can't be split back reliably; a free-text answer ("Type something") is the typed text, with no marker (S19-013 `a parrot`). Compare with the option labels to tell them apart, never assume a match.
+  - **Dismissed** with Esc: **no hook event at all**, no `tool.post`, no `tool.failure`, no `turn.stop` (S19, third call). Only the session status file shows it, going from `waiting` to `idle` (S19-035). Without it, the question stays open until a later event of the session (the next `turn.start`) or a timeout.
 - **Session end.** `session.end` is sticky. After a crash it may be missing; the envelope `pid` is the `claude` process (contract §6).
 
 ## 4. Codex (`codex`)
@@ -259,7 +272,7 @@ A rule is an object with these keys, evaluated in this order:
 | Key | Value | Effect |
 |---|---|---|
 | `when` | list of conditions | The rule applies only if every condition holds. A condition is `{ "path": <pointer>, "in": [<strings>] }`: it holds if the value at the pointer is a string equal to one of the listed strings. Absent `when` always holds. |
-| `path` | JSON Pointer ([RFC 6901](https://www.rfc-editor.org/rfc/rfc6901)), or a list of them | The value at the first pointer that exists in the payload. A key holding `null` exists. None exists → no value. |
+| `path` | JSON Pointer ([RFC 6901](https://www.rfc-editor.org/rfc/rfc6901)), or a list of them | The value at the first pointer that exists in the payload. A key holding `null` exists. None exists → no value. The empty pointer `""` is the whole payload (inside `each`: the whole element). |
 | `parse` | `"json"` | The value must be a string; it is parsed as JSON. Not a string or not valid JSON → no value. |
 | `pick` | JSON Pointer | Applied to the parsed value (only together with `parse`). Missing → no value. |
 | `each` | a field spec | The value must be an array, else no value. The spec is applied to every element as if the element were the payload (its pointers start at the element). Elements whose spec yields no value are left out; the value is the array of the others, in order. An empty array stays empty. |
@@ -297,7 +310,7 @@ A rule is an object with these keys, evaluated in this order:
   "each": { "when": [ { "path": "/type", "in": ["subagent"] } ], "path": "/id", "type": "id" } }
 ```
 
-`each` both projects and filters: the inner `when` drops the `shell` entries, `path` picks each remaining entry's `id`. `[{"id":"a1","type":"subagent",…},{"id":"b2","type":"shell",…}]` yields `["a1"]`; `[]` yields `[]`; a missing `background_tasks` leaves the field absent.
+`each` both projects and filters: the inner `when` drops the `shell` entries, `path` picks each remaining entry's `id`. `[{"id":"a1","type":"subagent",…},{"id":"b2","type":"shell",…}]` yields `["a1"]`; `[]` yields `[]`; a missing `background_tasks` leaves the field absent. `background_shells` keeps whole entries instead, with `"path": ""` and `"type": "object"`: the same input yields `[{"id":"b2","type":"shell",…}]`.
 
 A drift such as a key renamed from `agent_transcript_path` to `child_transcript_path` is absorbed by `"path": ["/child_transcript_path", "/agent_transcript_path"]`: new payloads use the new key, old event files still resolve the old one.
 
@@ -324,7 +337,7 @@ fixtures/<source>/<version>/<run>/
 ```
 
 - Content: the result object (§5), pretty-printed with two spaces, LF line endings and a trailing newline. Comparison is semantic (as JSON values).
-- All 394 fixture events (286 Claude Code, 108 Codex) and all 92 status snapshots (Claude Code 2.1.287 to 2.1.289) have one. A new capture adds its `expected/` files in the same PR; `python3 tools/model/apply.py model/<source>.json < events/F` prints a first version to review by hand.
+- All 431 fixture events (323 Claude Code, 108 Codex) and all 115 status snapshots (Claude Code 2.1.287 to 2.1.316) have one. A new capture adds its `expected/` files in the same PR; `python3 tools/model/apply.py model/<source>.json < events/F` prints a first version to review by hand.
 - The existing globs (`fixtures/*/*/*/events/*.json` in CI and `tools/e2e/check.sh`) don't see `expected/`.
 
 **CI check** (`tests/model.test.py`): for every `events/F`, apply `model/<source>.json` with the reference interpreter `tools/model/apply.py` and compare with `expected/F`; fail if an `events/` file has no `expected/` file or the other way round. Likewise `status/F` with `model/<source>-session.json` and `status-expected/F`. The same test covers each rule of §5.1 and checks that every adapter ships its own mapping unchanged. CI also validates the mapping documents and golden files against their schemas (§11). The reference interpreter runs only in CI and tests, never in the hook. The golden files are also the test suite for each app's interpreter: both apps run their own interpreter over the same fixtures and mappings.
@@ -359,12 +372,14 @@ Checked against today's logic in The Collective (`ClaudeCodeAdapter.swift`) and 
 | Session start, `cwd`, end | core `session.start`, `cwd`; Claude Code `session.end`, `end_reason` |
 | Session model | Claude Code `model`, `to_model`, carried over per `pid` on `clear` (§3.3 "Session model") |
 | Prompt text, notification prompts | block `prompt`; Claude Code `<task-notification>` / `<agent-message ` prefix |
-| Tool activity and a one-line detail | core `tool.pre`, `tool`; block `tool_name`, `tool_input` (`command`, `file_path`, …), Codex `command` |
+| Tool activity and a one-line detail | core `tool.pre`, `tool`; block `tool_name`, `tool_input` (`file_path`, …); `command` in both sources, Claude Code `command_description` |
 | Tool pairing, late pre | core `tool_call` |
 | Subagent tree, title, prompt, background, model | core `agent`; Claude Code `spawn_*`, `spawned_agent`, `spawned_async`, `spawned_model`; Codex `spawn_name`, `spawn_task` |
 | Internal agents | Claude Code `agent_type: ""` |
 | Waiting for the user | core `permission.request`; Claude Code `notification_type` |
+| Questions to the user and their answers | Claude Code `questions` (while open), `answers`, `annotations` on the post (§3.3 "Questions") |
 | Done | core `turn.stop` plus open agents; Claude Code `background_agents` (also ends agents stopped by the user, which send no `agent.stop`) |
+| Background shells, count and description | Claude Code `background_shells`, `spawned_shell`; session status `shell` (§12.2) |
 | Touched files | Claude Code `file_path` of `Write`/`Edit` (S13-008, S13-011); Codex writes through the shell without a path (X2-003) |
 | Transcript paths | Claude Code `transcript_path`, `agent_transcript_path`; Codex `rollout_path`, `parent_rollout_path` |
 
@@ -379,6 +394,9 @@ Anything else an app wants is still in `payload`; reading it there couples that 
 - The session's model is missing after `/clear`, on `resume` and in headless sessions (S17, S18, C1, S9); apps carry it over on `clear` only (§3.3).
 - Subagent resume ("the same task-id may notify more than once", C2-021) is unobserved.
 - A background agent stopped by the user has no end event; only its absence from `background_agents` shows it (S15). Stopping a single agent from the task list, rather than all with Ctrl+X Ctrl+K, is unobserved.
+- A question dismissed with Esc has no end event (S19); only the session status file shows it. Whether a `multiSelect` answer lists its labels in option order or in the order the user picked them is open (S19 picked them in option order). An equivalent question tool in Codex is unchecked.
+- A short-lived session status file of a `claude bg-spare` process that names another process's session (contract §13) is observed only by its effect; a raw capture of a `claude attach` would make it a fixture.
+- A background shell has no end event either. Only a killed session is captured (S6a); a shell that ends on its own, one the user stops, and whether its end starts a `<task-notification>` turn as for background agents are unobserved.
 
 **Codex**
 - Child ↔ spawn needs the rollout, and is impossible in ephemeral sessions. Nested spawning and reuse across resume are unobserved.
@@ -393,15 +411,15 @@ Anything else an app wants is still in `payload`; reading it there couples that 
 
 ## 11. JSON Schemas
 
-- `schema/<source>/result.v1.json` ([Claude Code](https://github.com/we-are-the-borg/subspace/blob/codex-1.0.1/schema/claude-code/result.v1.json), `$id` `urn:subspace:result:claude-code:v1`; [Codex](https://github.com/we-are-the-borg/subspace/blob/codex-1.0.1/schema/codex/result.v1.json), `urn:subspace:result:codex:v1`): the result of applying that source's mapping: the core (§2), identical in both (`tests/model.test.py` checks it), plus that source's block. Blocks are closed, so a mapping can't produce a field the target model doesn't define; adding a target field ships mapping and schema together.
-- [`schema/claude-code/session-status.v1.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.0.1/schema/claude-code/session-status.v1.json) (`$id` `urn:subspace:session-status:claude-code:v1`): the result of applying a session-status mapping (§12), closed like the result schema.
+- `schema/<source>/result.v1.json` ([Claude Code](https://github.com/we-are-the-borg/subspace/blob/codex-1.1.0/schema/claude-code/result.v1.json), `$id` `urn:subspace:result:claude-code:v1`; [Codex](https://github.com/we-are-the-borg/subspace/blob/codex-1.1.0/schema/codex/result.v1.json), `urn:subspace:result:codex:v1`): the result of applying that source's mapping: the core (§2), identical in both (`tests/model.test.py` checks it), plus that source's block. Blocks are closed, so a mapping can't produce a field the target model doesn't define; adding a target field ships mapping and schema together.
+- [`schema/claude-code/session-status.v1.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.1.0/schema/claude-code/session-status.v1.json) (`$id` `urn:subspace:session-status:claude-code:v1`): the result of applying a session-status mapping (§12), closed like the result schema.
 - [`schema/mapping.v1.json`](../schema/mapping.v1.json) (`$id` `urn:subspace:mapping:v1`): a mapping document. It is closed for this repository's own documents, so CI catches typos. Interpreters in the apps still follow §5.1 (unknown keys → field absent), so a newer document with new operations degrades instead of failing.
 
 `schema/*.json` (envelope, mapping) ship in every adapter, `schema/<source>/*.json` only in that source's adapter (`tools/sync.sh`); all land flat in `$ROOT/schema/`. A schema change thereby releases only the adapters it concerns.
 
 ## 12. Session status (Claude Code)
 
-Claude Code keeps one **session status file** per running process, `<config dir>/sessions/<pid>.json` (contract §13). It is a side source: subspace never reads or writes it, it documents it and ships a mapping for it, [`model/claude-code-session.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.0.1/model/claude-code-session.json) (`document: session-status`). Apps apply it to the file's content exactly like a hook mapping to a payload. Evidence: the status snapshots of `fixtures/claude-code/2.1.287/` (S1–S9).
+Claude Code keeps one **session status file** per running process, `<config dir>/sessions/<pid>.json` (contract §13). It is a side source: subspace never reads or writes it, it documents it and ships a mapping for it, [`model/claude-code-session.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.1.0/model/claude-code-session.json) (`document: session-status`). Apps apply it to the file's content exactly like a hook mapping to a payload. Evidence: the status snapshots of `fixtures/claude-code/2.1.287/` (S1–S9).
 
 ### 12.1 Fields
 
@@ -415,7 +433,8 @@ Claude Code keeps one **session status file** per running process, `<config dir>
 | `waiting_for` | `permission`, `input` or `dialog` | `waitingFor` via a table (`permission prompt`, `input needed`, `dialog open`), only while `status` is `waiting`; absent for an unknown value | S4-008, S4-027, S6a-026 |
 | `waiting_text` | string | `waitingFor`, raw, only while `status` is `waiting` | S4-008 |
 | `pid` | integer | `pid`: the `claude` process, equals the file name and the hooks' envelope `pid` | S1-001 |
-| `process_kind` | string | `kind`: `interactive`, also for `claude -p` (S9-001); `bg` for background sessions (outside the fixtures) | S1-001 |
+| `process_kind` | string | `kind`: `interactive`, also for `claude -p` (S9-001); `bg` for background sessions and the daemon's `claude bg-spare` processes (outside the fixtures) | S1-001 |
+| `spare` | boolean | `spare`: `true` while the process is a `claude bg-spare` process no job has claimed yet; absent in every other file seen, also after a claim (outside the fixtures, Claude Code 2.1.316) | none |
 | `entrypoint` | string | `entrypoint`: `cli`, `sdk-cli` for `claude -p` | S1-001, S9-001 |
 | `name`, `version` | string | `name` (display name), `version` (Claude Code version) | S1-001 |
 | `started_at`, `updated_at` | integer (Unix ms) | `startedAt`, `updatedAt` (any change of the file, not only `status`) | S1-001 |
@@ -424,13 +443,15 @@ Left in the file: `procStart`, `peerProtocol`, `peerFeatures`, `pidDomain`, `mes
 
 ### 12.2 Meaning of `state`
 
-- `working`: a turn runs, including tools, `!` shell commands (S5-006) and background subagents (S6: `working` across two `turn.stop`s until the last hand-back turn ended). `shell` (S6a-025) means no turn but a background shell still running; it maps to `working` too, the raw value stays in `status`.
-- `waiting`: the session needs the user: a permission dialog (S4-008), a question (`AskUserQuestion`, S4-027), a dialog such as the exit confirmation (S6a-026). The hooks show the first two as well (`permission.request`, S4-010, S4-028), the dialog only here.
-- `idle`: no turn runs. Reached after a normal end and, **without any hook event**, after Esc or Ctrl-C mid-turn (S2-008, S2-011) or mid-tool (S3-009) and after a rejected permission (S4-023).
+- `working`: a turn runs, including tools, `!` shell commands (S5-006) and background subagents (S6: `working` across two `turn.stop`s until the last hand-back turn ended). `shell` (S6a-025) means no turn but a background shell still running; it maps to `working` too, the raw value stays in `status`. Which shells run, with their descriptions, is in the hook events' `background_shells` (§3.2).
+- `waiting`: the session needs the user: a permission dialog (S4-008), a question (`AskUserQuestion`, S4-027, S19-009), a dialog such as the exit confirmation (S6a-026). The hooks show the first two as well (`permission.request`, S4-010, S4-028), the dialog only here.
+- `idle`: no turn runs. Reached after a normal end and, **without any hook event**, after Esc or Ctrl-C mid-turn (S2-008, S2-011) or mid-tool (S3-009), after a rejected permission (S4-023) and after a question dismissed with Esc (S19-035).
 
 ### 12.3 Rules
 
-- **Key by `session`, never by `pid`.** A process can carry another session over time (`--continue` S7-001/002; `/clear` S17-012/013; `claude bg-spare` processes take on new sessions).
+- **Key by `session`, never by the file name.** A process can carry another session over time (`--continue` S7-001/002; `/clear` S17-012/013; `claude bg-spare` processes take on new sessions).
+- **Only the session's own process counts.** A file is the session's state only if its `pid` equals the envelope `pid` of the session's latest hook event. A file whose `pid` has no event of that session yet is pending: it neither renames the session nor sets its `state` until such an event arrives (a new process writes its file before `SessionStart`, S1-001, also on a resume, S7-002; after `/clear` the file names the new session before its `SessionStart`, S17-013). Short-lived files of the daemon's `claude bg-spare` processes (`kind: bg`) can name another process's session (contract §13; observed outside the fixtures); this rule keeps them from renaming it or reporting it `idle`.
 - **Newer wins.** Compare `status_at` with the hook events' times; the newer source says whether the session is working. A hook can't undo an `idle` that is newer than it.
+- **Hide spares.** A file with `spare: true` is a warm `claude bg-spare` process, not a session the user started (`kind: bg`, `name` and `jobId` equal to the short id, `status: idle`). Hide a session while its own file (previous rules) has `spare: true`; a spare file that isn't the session's own changes nothing. A claim gives the process the job's session, with a hook `SessionStart` (`source: resume`) of that session; the spare's own session never becomes the job's (contract §13).
 - **Deleted file = process ended.** Deleted on `/exit` and at the end of `claude -p`. After a crash (`kill -9`) it stays until the next `claude` process starts (S8, S6a), so a present file whose `pid` is not alive is stale.
 - **Missing, unparseable or `state` absent → unknown.** Fall back to the hooks and a timeout. Never guess from an unknown `status`.
