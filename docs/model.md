@@ -2,7 +2,7 @@
 
 The plugins ship the mapping documents to `$ROOT/model/<source>.json` (contract §12); the apps' interpreters are still to come.
 
-**The idea.** Event files stay exactly as contract v1 defines them: the agent's raw payload, byte for byte, in the v1 envelope. subspace additionally publishes one **mapping document** per source ([`model/claude-code.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.1.0/model/claude-code.json), [`model/codex.json`](../model/codex.json)). It says where in the raw payload each **target field** is. Apps apply it with a small generic interpreter (§5). When an agent changes its payloads, subspace changes the mapping document and releases; the apps need no update.
+**The idea.** Event files stay exactly as contract v1 defines them: the agent's raw payload, byte for byte, in the v1 envelope. subspace additionally publishes one **mapping document** per source ([`model/claude-code.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.2.0/model/claude-code.json), [`model/codex.json`](../model/codex.json)). It says where in the raw payload each **target field** is. Apps apply it with a small generic interpreter (§5). When an agent changes its payloads, subspace changes the mapping document and releases; the apps need no update.
 
 The result of applying a mapping to one payload looks like this:
 
@@ -16,14 +16,16 @@ It is a small **core** with the same meaning for every source, plus **one block 
 
 **What the mapping solves and what it doesn't.** It answers "where is the value": a renamed, moved or newly added key is handled by changing the mapping alone. It doesn't answer "what does it mean": when an event changes its meaning or new semantics arrive (for example a link field that enables a new correlation rule), apps still change their logic.
 
-**Evidence.** Every mapping is derived from the real captures in `fixtures/claude-code/2.1.285/`, `fixtures/claude-code/2.1.287/`, `fixtures/claude-code/2.1.288/`, `fixtures/claude-code/2.1.289/`, `fixtures/claude-code/2.1.316/` and `fixtures/codex/0.159.3/`, and nothing else. Short references: **C2-014** is `fixtures/claude-code/2.1.285/2-…/events/014-*.json`, **S4-010** is `fixtures/claude-code/2.1.287/4-…/events/010-*.json` or `…/status/010-status.json` (S15 is in `2.1.288/15-…`, S16–S18 in `2.1.289/16-…` to `18-…`, S19 and S20 in `2.1.316/19-…` and `20-…`), **X1-008** is `fixtures/codex/0.159.3/1-…/events/008-*.json`. The runs:
+**Evidence.** Every mapping is derived from the real captures in `fixtures/claude-code/2.1.285/`, `fixtures/claude-code/2.1.287/`, `fixtures/claude-code/2.1.288/`, `fixtures/claude-code/2.1.289/`, `fixtures/claude-code/2.1.316/`, `fixtures/claude-code/2.1.318/`, `fixtures/codex/0.159.3/` and `fixtures/codex/0.167.0/`, and nothing else. Short references: **C2-014** is `fixtures/claude-code/2.1.285/2-…/events/014-*.json`, **S4-010** is `fixtures/claude-code/2.1.287/4-…/events/010-*.json` or `…/status/010-status.json` (S15 is in `2.1.288/15-…`, S16–S18 in `2.1.289/16-…` to `18-…`, S19 and S20 in `2.1.316/19-…` and `20-…`, S22 and S24 in `2.1.318/22-…` and `24-…`), **X1-008** is `fixtures/codex/0.159.3/1-…/events/008-*.json`, **R2-004** is `fixtures/codex/0.167.0/2-…/events/004-*.json`. The runs:
 
 - Claude Code 2.1.285: C1 headless parallel subagents; C2 interactive background subagents, compact and exit; C3 permission and Ctrl-C.
 - Claude Code 2.1.287, hook events plus session status files (§12): S1 idle and exit; S2 Esc and Ctrl-C mid-turn; S3 Esc mid-tool; S4 permission and question waits; S5 `!` shell; S6 background subagents; S6a background shell, exit dialog, killed; S7 `--continue`; S8 `kill -9`; S9 `claude -p`; S11 `/exit` without a prompt; S12 failing tool; S13 file tools; S14 terminated before any input.
 - Claude Code 2.1.288, hook events plus session status files: S15 a background agent stopped by the user (Ctrl+X Ctrl+K).
 - Claude Code 2.1.289, hook events plus session status files: S16 two `Agent` calls, one with `model: haiku`, one without; S17 `/model sonnet`, then `/clear` in the same process; S18 `--continue` of S17's session with `--model haiku`.
 - Claude Code 2.1.316, hook events plus session status files: S19 `AskUserQuestion` answered with `multiSelect`, free text and a note, then dismissed with Esc; S20 a multi-line `Bash` command (heredoc) behind a permission prompt.
-- Codex: X1 parallel and reused children plus a failed command; X2 daemon permission and compact; X3 manual permission and rejection; X4/X5 interrupt before a tool; X6/X7 interrupt of a running shell; X8 resume; X9 ephemeral; X10 cwd with spaces.
+- Claude Code 2.1.318, hook events plus session status files: S22 a background session (`claude --bg`), ended with `claude stop`; S24 another one, attached with `claude attach <job>`, one prompt sent through the attach client, detached with Ctrl+Z, ended with `claude stop`.
+- Codex 0.159.3: X1 parallel and reused children plus a failed command; X2 daemon permission and compact; X3 manual permission and rejection; X4/X5 interrupt before a tool; X6/X7 interrupt of a running shell; X8 resume; X9 ephemeral; X10 cwd with spaces.
+- Codex 0.167.0, hook events plus rollout excerpts: R1 automatic review, four approvals, two of them concurrent in one turn; R2 automatic review, one rejection and two approvals; R3 manual reviewer, one approval and one denial.
 
 ## 1. Principles
 
@@ -117,8 +119,8 @@ Unobserved hooks get their kind and the fields that hold on every hook (`transcr
 | `permission_mode` | string | `permission_mode` | C1-004, C2-031 (`plan`) |
 | `agent_type` | string, **may be empty** | `agent_type`, subagent events | C1-009; `""` C2-025 |
 | `start_source` | string | `source` on `SessionStart` | C1-001 `startup`, C2-032 `compact`, S7-003 `resume`, S17-015 `clear` |
-| `model` | string | `model` on `SessionStart`: the model the process starts the session with. **Only on an interactive `startup` and on `compact`**; absent on `clear`, `resume` and headless (`claude -p`). See §3.3 "Session model" | C2-001, C2-032, S17-002; absent S17-015 (`clear`), S7-003 and S18-003 (`resume`), C1-001 and S9-004 (headless) |
-| `end_reason` | string | `reason` on `SessionEnd` | C1-021 `other`, C2-034 `prompt_input_exit`; S14-006 `other` for a session terminated from outside before any input, which has no `prompt_id` |
+| `model` | string | `model` on `SessionStart`: the model the process starts the session with. **Only on a `startup` of an interactive or background session (not headless) and on `compact`**; absent on `clear`, `resume` and headless (`claude -p`). See §3.3 "Session model" | C2-001, C2-032, S17-002, S22-004 (background); absent S17-015 (`clear`), S7-003 and S18-003 (`resume`), C1-001 and S9-004 (headless) |
+| `end_reason` | string | `reason` on `SessionEnd` | C1-021 `other`, C2-034 `prompt_input_exit`; S14-006 `other` for a session terminated from outside before any input, which has no `prompt_id`; S22-011 `other` for a background session ended with `claude stop` |
 | `prompt` | string | `prompt` on `UserPromptSubmit` | C1-004; `<task-notification>` C2-021; `<agent-message …>` S6-025 |
 | `tool_name` | string | `tool_name` on `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest` | C1-005, C3-006, S12-009 |
 | `tool_input` | **opaque** | `tool_input`, same hooks | C1-005, C3-006 |
@@ -173,7 +175,7 @@ Left in `payload` because no app uses them today: `scratchpad_dir`, `Instruction
   - A background agent missing from the `background_agents` of a root `turn.stop` or an `agent.stop` of the same `session` has ended, if that event's envelope `ts` is later than the one of the agent's `Agent` post (same second: keep it open; `ts` has seconds and async hooks are written late). Arrival order is only a hint (contract §6).
   - At its own `agent.stop` an agent is still listed (C2-020, S6-027, S6a-021); the `agent.stop` itself ends it, and closing is sticky.
   - 2.1.288 also starts a turn whose `prompt` is `Background agent "<description>" was stopped by the user.` (S15-017). It names the `Agent` call's `description`, not the agent, so don't match by it.
-- **Session model.** No hook names the model of every session (S17, S18; nor do the session status file, §12, or the `CLAUDE_*` variables in the hook's environment). What there is: `model` on `session.start` (interactive `startup`, `compact`) and `to_model` on `model.change` (`/model`, also automatic switches). Rules for apps:
+- **Session model.** No hook names the model of every session (S17, S18; nor do the session status file, §12, or the `CLAUDE_*` variables in the hook's environment). What there is: `model` on `session.start` (`startup` of an interactive or background session, S22-004; `compact`) and `to_model` on `model.change` (`/model`, also automatic switches). Rules for apps:
   - The model is a property of the `claude` process (envelope `pid`), not of the session: it holds until the next `model.change` of that process.
   - **`clear` keeps it.** `/clear` ends the session and starts a new one in the same process: `session.end` with `end_reason: clear` (S17-014) and `session.start` with `start_source: clear` (S17-015) of the new `session`, same `pid`, without `model`. The new session runs with the process's current model, including an earlier `/model` (S17: `/model sonnet` at S17-011, the first answer after `/clear` came from `claude-sonnet-5-5` according to the transcript). Apps carry the last known model of that `pid` over to the new session. Match by `pid` and `end_reason`/`start_source`, not by order: both come within milliseconds and may arrive either way round.
   - **`resume` doesn't.** `--continue`/`--resume` starts a new process whose model comes from its own flags and settings, not from the resumed session (S18: S17's session last ran on Sonnet; resumed with `--model haiku`, it answered with `claude-haiku-4-5-20251001`, and S18-003 has no `model`). Never take the model from earlier events of that `session`. It stays unknown until a `model.change` of the new process.
@@ -183,7 +185,7 @@ Left in `payload` because no app uses them today: `scratchpad_dir`, `Instruction
   - **Answered:** the `tool.post` (block `tool.post`, same `tool_call`) carries `questions` again plus `answers` and `annotations`. Tie an answer to its question by the question text: `answers[questions[i].question]`. A question without a key in `answers` is unanswered.
   - An answer is **one string** in every case: a single choice is its `label` (S19-024 `List`); a `multiSelect` answer joins the chosen labels with `", "` (S19-013 `apple, cherry`), so a label containing `", "` can't be split back reliably; a free-text answer ("Type something") is the typed text, with no marker (S19-013 `a parrot`). Compare with the option labels to tell them apart, never assume a match.
   - **Dismissed** with Esc: **no hook event at all**, no `tool.post`, no `tool.failure`, no `turn.stop` (S19, third call). Only the session status file shows it, going from `waiting` to `idle` (S19-035). Without it, the question stays open until a later event of the session (the next `turn.start`) or a timeout.
-- **Session end.** `session.end` is sticky. After a crash it may be missing; the envelope `pid` is the `claude` process (contract §6).
+- **Session end.** `session.end` is sticky. After a crash it may be missing; the `claude` process is the envelope `pid` of the session's latest event other than `session.end`, never a `pid` of 1 (contract §6, "Liveness").
 
 ## 4. Codex (`codex`)
 
@@ -194,7 +196,7 @@ Left in `payload` because no app uses them today: `scratchpad_dir`, `Instruction
 | `SessionStart` | `session.start` | `session.start` | X1-001, X2-014, X8-001 |
 | `UserPromptSubmit` | `turn.start` | `turn.start` | X1-002 |
 | `PreToolUse` | `tool.pre` | `tool.pre` | X1-003 |
-| `PermissionRequest` | `permission.request` | `permission.request` | X2-004 |
+| `PermissionRequest` | `permission.request` | `permission.request` | X2-004, R1-004 |
 | `PostToolUse` | `tool.post` | `tool.post` | X1-004 |
 | `PreCompact` / `PostCompact` | `compact.start` / `compact.end` | same | X2-012 / X2-013 |
 | `SubagentStart` | `agent.start` | `agent.start` | X1-009, X1-015 |
@@ -204,6 +206,8 @@ Left in `payload` because no app uses them today: `scratchpad_dir`, `Instruction
 | anything else | `unknown` | `unknown` | – |
 
 ### 4.2 Fields, Codex 0.159.3
+
+Unchanged in 0.167.0 for the hooks R1–R3 cover (no children or spawns).
 
 | Block field | Type | From the payload, on which hooks | Evidence |
 |---|---|---|---|
@@ -234,7 +238,14 @@ Left in `payload`: `stop_hook_active`, and `tool_input.message` of spawns, which
   - Child turns close with `agent.turn.stop`. A child can be reused: it becomes active again under a new `turn_id` without a new `agent.start` (X1-014 closes `…221c…`, X1-024 opens `…804b…`, X1-026 closes it).
   - A late `tool.post` for a closed turn closes only its call (X6-009, after X6-008).
 - **Tool result: unknown, always.** There is no outcome field. The failed `sh -c "exit 7"` has `tool_response: ""` (X1-006), exactly like successful calls (X1-022, X2-005). Exit codes exist only in the rollout.
-- **Permissions.** Match a `permission.request` to the call with equal (`session`, `agent`, `turn_id`, `tool_name`, `command`), regardless of arrival order (before the pre: X2-008/009, X3-003/004; after: X2-003/004). Don't compare `tool_input` whole: the request adds `description`. Several candidates → leave it unmatched. A rejection ends the turn with `turn.interrupt` (X3-008…010). A remembered approval sends no request (X3-017).
+- **Permissions.** Match a `permission.request` to the call with equal (`session`, `agent`, `turn_id`, `tool_name`, `command`), regardless of arrival order (before the pre: X2-008/009, X3-003/004; after: X2-003/004, and every request in 0.167.0, R1-003/004, R3-003/004). Concurrent calls in one turn: both pres, then both requests in the opposite order (R1-013…016); distinct commands keep them apart. Don't compare `tool_input` whole: the request adds `description`. Several candidates → leave it unmatched. A remembered approval sends no request (X3-017).
+- **Who answers a request.** Codex asks its automatic reviewer instead of the user when `approvals_reviewer` is `auto_review` (`--approve-for-me`, or set in the config). No payload field tells, and no hook marks the decision (`permission_mode: default` under both, R1-004, R3-004). The turn's rollout does: its `turn_context` record with the same `turn_id` has `payload.approvals_reviewer`, `auto_review` (R1, R2) or `user` (R3) (`rollouts/excerpt.jsonl` of each run). That is app work, like the child ↔ spawn link: read it from the event's `rollout_path`.
+  - `auto_review`: Codex is reviewing. Show the request as such and don't notify the user.
+  - `user`, any other value, no such record, no readable rollout, or `rollout_path: null` (ephemeral): the request waits for the user.
+  - Approved (either reviewer): the call's `tool.post` follows once the command has run (R1-005, R3-005); close the request there.
+  - Rejected by the automatic reviewer: **no `tool.post` and no `turn.interrupt`**; the turn goes on and ends with `turn.stop` (R2-003…005). Close the request at the latest with that `turn.stop`. The rollout has the rejection only as the call's output text (`Rejected(…)`, R2 excerpt).
+  - Denied by the user: `turn.interrupt` ends the turn (X3-008…010, R3-008…010).
+  - Unobserved: the automatic reviewer handing a request to the user, and further calls in a turn after a rejection.
 - **Child ↔ spawn** (core `tool: spawn_agent`): the spawn's post has `spawn_task` (`/root/alpha`). No child event names its task path or spawning call (X1-009 … X1-026). The link needs the child rollout's first `session_meta` line (`payload.source.subagent.thread_spawn.agent_path`); the child's `rollout_path` points to that file (X1-009, `rollouts/session_meta.jsonl` of X1). That is app work. In ephemeral sessions (`rollout_path: null`, X9) children stay unassigned. The parent is the core `agent` of the spawning call (absent: the root). Never assign by order: X1-015 arrives after X1-014.
 - **Session end.** There is no end event (`SessionEnd` is never subscribed). Apps infer inactivity from a timeout; the envelope `pid` can be a shared app-server (contract §6).
 
@@ -337,7 +348,7 @@ fixtures/<source>/<version>/<run>/
 ```
 
 - Content: the result object (§5), pretty-printed with two spaces, LF line endings and a trailing newline. Comparison is semantic (as JSON values).
-- All 431 fixture events (323 Claude Code, 108 Codex) and all 115 status snapshots (Claude Code 2.1.287 to 2.1.316) have one. A new capture adds its `expected/` files in the same PR; `python3 tools/model/apply.py model/<source>.json < events/F` prints a first version to review by hand.
+- All 494 fixture events (337 Claude Code, 157 Codex) and all 127 status snapshots (Claude Code 2.1.287 to 2.1.318) have one. A new capture adds its `expected/` files in the same PR; `python3 tools/model/apply.py model/<source>.json < events/F` prints a first version to review by hand.
 - The existing globs (`fixtures/*/*/*/events/*.json` in CI and `tools/e2e/check.sh`) don't see `expected/`.
 
 **CI check** (`tests/model.test.py`): for every `events/F`, apply `model/<source>.json` with the reference interpreter `tools/model/apply.py` and compare with `expected/F`; fail if an `events/` file has no `expected/` file or the other way round. Likewise `status/F` with `model/<source>-session.json` and `status-expected/F`. The same test covers each rule of §5.1 and checks that every adapter ships its own mapping unchanged. CI also validates the mapping documents and golden files against their schemas (§11). The reference interpreter runs only in CI and tests, never in the hook. The golden files are also the test suite for each app's interpreter: both apps run their own interpreter over the same fixtures and mappings.
@@ -349,6 +360,7 @@ fixtures/<source>/<version>/<run>/
 | Root/subagent attribution | core `agent` | – |
 | Tool pairing | core `tool_call` | pairing across files |
 | Permission ↔ call | the match fields (§3.3, §4.3) | matching, ambiguity |
+| Who answers a permission, Codex | `turn_id`, `rollout_path` | reading `turn_context.approvals_reviewer` from the rollout (§4.3) |
 | Subagent ↔ spawn, Claude Code | `spawned_agent` on the `Agent` post; `parent_tool_use_id` once sent | earlier link via `meta.json` |
 | Child ↔ spawn, Codex | `spawn_task`, child `rollout_path` | reading `session_meta` from the rollout |
 | Turn/agent state | block kinds and turn IDs | sticky state, timeouts |
@@ -376,10 +388,11 @@ Checked against today's logic in The Collective (`ClaudeCodeAdapter.swift`) and 
 | Tool pairing, late pre | core `tool_call` |
 | Subagent tree, title, prompt, background, model | core `agent`; Claude Code `spawn_*`, `spawned_agent`, `spawned_async`, `spawned_model`; Codex `spawn_name`, `spawn_task` |
 | Internal agents | Claude Code `agent_type: ""` |
-| Waiting for the user | core `permission.request`; Claude Code `notification_type` |
+| Waiting for the user | core `permission.request`; Claude Code `notification_type`; Codex: unless the rollout names the automatic reviewer (§4.3) |
 | Questions to the user and their answers | Claude Code `questions` (while open), `answers`, `annotations` on the post (§3.3 "Questions") |
 | Done | core `turn.stop` plus open agents; Claude Code `background_agents` (also ends agents stopped by the user, which send no `agent.stop`) |
 | Background shells, count and description | Claude Code `background_shells`, `spawned_shell`; session status `shell` (§12.2) |
+| Background sessions and their job | Claude Code session status `process_kind` (`bg`), `job_id` (to offer `claude attach <job_id>`, §12.1) |
 | Touched files | Claude Code `file_path` of `Write`/`Edit` (S13-008, S13-011); Codex writes through the shell without a path (X2-003) |
 | Transcript paths | Claude Code `transcript_path`, `agent_transcript_path`; Codex `rollout_path`, `parent_rollout_path` |
 
@@ -395,12 +408,13 @@ Anything else an app wants is still in `payload`; reading it there couples that 
 - Subagent resume ("the same task-id may notify more than once", C2-021) is unobserved.
 - A background agent stopped by the user has no end event; only its absence from `background_agents` shows it (S15). Stopping a single agent from the task list, rather than all with Ctrl+X Ctrl+K, is unobserved.
 - A question dismissed with Esc has no end event (S19); only the session status file shows it. Whether a `multiSelect` answer lists its labels in option order or in the order the user picked them is open (S19 picked them in option order). An equivalent question tool in Codex is unchecked.
-- A short-lived session status file of a `claude bg-spare` process that names another process's session (contract §13) is observed only by its effect; a raw capture of a `claude attach` would make it a fixture.
+- A short-lived session status file of a `claude bg-spare` process that names another process's session (contract §13) is observed only by its effect; the `claude attach` captured in S24 did not reproduce it (no new file in `sessions/`).
 - A background shell has no end event either. Only a killed session is captured (S6a); a shell that ends on its own, one the user stops, and whether its end starts a `<task-notification>` turn as for background agents are unobserved.
 
 **Codex**
 - Child ↔ spawn needs the rollout, and is impossible in ephemeral sessions. Nested spawning and reuse across resume are unobserved.
 - There is no tool outcome at all.
+- No hook tells who answers a permission request or what the automatic reviewer decided; only the rollout's `turn_context` names the reviewer, and a rejection ends nothing (R2, §4.3). A hand-over from the automatic reviewer to the user is unobserved.
 - A child announces only its first turn.
 - There is no session end and no background snapshot.
 - Code-mode and MCP tool names are unobserved.
@@ -411,15 +425,15 @@ Anything else an app wants is still in `payload`; reading it there couples that 
 
 ## 11. JSON Schemas
 
-- `schema/<source>/result.v1.json` ([Claude Code](https://github.com/we-are-the-borg/subspace/blob/codex-1.1.0/schema/claude-code/result.v1.json), `$id` `urn:subspace:result:claude-code:v1`; [Codex](https://github.com/we-are-the-borg/subspace/blob/codex-1.1.0/schema/codex/result.v1.json), `urn:subspace:result:codex:v1`): the result of applying that source's mapping: the core (§2), identical in both (`tests/model.test.py` checks it), plus that source's block. Blocks are closed, so a mapping can't produce a field the target model doesn't define; adding a target field ships mapping and schema together.
-- [`schema/claude-code/session-status.v1.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.1.0/schema/claude-code/session-status.v1.json) (`$id` `urn:subspace:session-status:claude-code:v1`): the result of applying a session-status mapping (§12), closed like the result schema.
+- `schema/<source>/result.v1.json` ([Claude Code](https://github.com/we-are-the-borg/subspace/blob/codex-1.2.0/schema/claude-code/result.v1.json), `$id` `urn:subspace:result:claude-code:v1`; [Codex](https://github.com/we-are-the-borg/subspace/blob/codex-1.2.0/schema/codex/result.v1.json), `urn:subspace:result:codex:v1`): the result of applying that source's mapping: the core (§2), identical in both (`tests/model.test.py` checks it), plus that source's block. Blocks are closed, so a mapping can't produce a field the target model doesn't define; adding a target field ships mapping and schema together.
+- [`schema/claude-code/session-status.v1.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.2.0/schema/claude-code/session-status.v1.json) (`$id` `urn:subspace:session-status:claude-code:v1`): the result of applying a session-status mapping (§12), closed like the result schema.
 - [`schema/mapping.v1.json`](../schema/mapping.v1.json) (`$id` `urn:subspace:mapping:v1`): a mapping document. It is closed for this repository's own documents, so CI catches typos. Interpreters in the apps still follow §5.1 (unknown keys → field absent), so a newer document with new operations degrades instead of failing.
 
 `schema/*.json` (envelope, mapping) ship in every adapter, `schema/<source>/*.json` only in that source's adapter (`tools/sync.sh`); all land flat in `$ROOT/schema/`. A schema change thereby releases only the adapters it concerns.
 
 ## 12. Session status (Claude Code)
 
-Claude Code keeps one **session status file** per running process, `<config dir>/sessions/<pid>.json` (contract §13). It is a side source: subspace never reads or writes it, it documents it and ships a mapping for it, [`model/claude-code-session.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.1.0/model/claude-code-session.json) (`document: session-status`). Apps apply it to the file's content exactly like a hook mapping to a payload. Evidence: the status snapshots of `fixtures/claude-code/2.1.287/` (S1–S9).
+Claude Code keeps one **session status file** per running process, `<config dir>/sessions/<pid>.json` (contract §13). It is a side source: subspace never reads or writes it, it documents it and ships a mapping for it, [`model/claude-code-session.json`](https://github.com/we-are-the-borg/subspace/blob/codex-1.2.0/model/claude-code-session.json) (`document: session-status`). Apps apply it to the file's content exactly like a hook mapping to a payload. Evidence: the status snapshots of `fixtures/claude-code/2.1.287/` (S1–S9, S6a), `2.1.289/` (S17), `2.1.316/` (S19) and `2.1.318/` (S22, S24).
 
 ### 12.1 Fields
 
@@ -432,14 +446,15 @@ Claude Code keeps one **session status file** per running process, `<config dir>
 | `status_at` | integer (Unix ms) | `statusUpdatedAt`: when `status` last changed | S1-003 |
 | `waiting_for` | `permission`, `input` or `dialog` | `waitingFor` via a table (`permission prompt`, `input needed`, `dialog open`), only while `status` is `waiting`; absent for an unknown value | S4-008, S4-027, S6a-026 |
 | `waiting_text` | string | `waitingFor`, raw, only while `status` is `waiting` | S4-008 |
-| `pid` | integer | `pid`: the `claude` process, equals the file name and the hooks' envelope `pid` | S1-001 |
-| `process_kind` | string | `kind`: `interactive`, also for `claude -p` (S9-001); `bg` for background sessions and the daemon's `claude bg-spare` processes (outside the fixtures) | S1-001 |
-| `spare` | boolean | `spare`: `true` while the process is a `claude bg-spare` process no job has claimed yet; absent in every other file seen, also after a claim (outside the fixtures, Claude Code 2.1.316) | none |
+| `pid` | integer | `pid`: the `claude` process, equals the file name and the hooks' envelope `pid` (with the exception in §12.3) | S1-001 |
+| `process_kind` | string | `kind`: `interactive`, also for `claude -p` (S9-001); `bg` for background sessions (`claude --bg`, run by a `claude bg-spare` process that claimed the job; every snapshot S22-001 to S22-010) and for the daemon's unclaimed spares (2.1.316, outside the fixtures). Decides how apps may use the hooks' `terminal`: to focus the session for `interactive`, app only (bring the app to the front) for `bg` (contract §6) | S1-001, S22-001 |
+| `spare` | boolean | `spare`: `true` while the process is a `claude bg-spare` process no job has claimed yet; absent in every other file seen, also after a claim (S22-001 to S22-010, a fresh `claude --bg` job; also in Claude Code 2.1.316, outside the fixtures). `true` only outside the fixtures (2.1.316) | absent S22-001 |
+| `job_id` | non-empty string | `jobId`: the short id `claude --bg` prints, which `claude stop`, `claude rm` and `claude attach` take (`35ad01b4` in every snapshot S22-001 to S22-010; in S24 `a7741313`, which `claude attach a7741313` attached); apps offer it as `claude attach <job_id>` (contract §6); absent in every interactive status file of the fixtures. An unclaimed spare has it equal to the short session id (outside the fixtures, contract §13) | S22-001, S24-001 |
 | `entrypoint` | string | `entrypoint`: `cli`, `sdk-cli` for `claude -p` | S1-001, S9-001 |
 | `name`, `version` | string | `name` (display name), `version` (Claude Code version) | S1-001 |
 | `started_at`, `updated_at` | integer (Unix ms) | `startedAt`, `updatedAt` (any change of the file, not only `status`) | S1-001 |
 
-Left in the file: `procStart`, `peerProtocol`, `peerFeatures`, `pidDomain`, `messagingSocketPath`, `nameSource`, `nameSince`, `jobId`, `parkedJobId`.
+Left in the file: `procStart`, `peerProtocol`, `peerFeatures`, `pidDomain`, `messagingSocketPath`, `nameSource`, `nameSince`, `parkedJobId`, `asksForConvertedSkills`.
 
 ### 12.2 Meaning of `state`
 
@@ -450,8 +465,8 @@ Left in the file: `procStart`, `peerProtocol`, `peerFeatures`, `pidDomain`, `mes
 ### 12.3 Rules
 
 - **Key by `session`, never by the file name.** A process can carry another session over time (`--continue` S7-001/002; `/clear` S17-012/013; `claude bg-spare` processes take on new sessions).
-- **Only the session's own process counts.** A file is the session's state only if its `pid` equals the envelope `pid` of the session's latest hook event. A file whose `pid` has no event of that session yet is pending: it neither renames the session nor sets its `state` until such an event arrives (a new process writes its file before `SessionStart`, S1-001, also on a resume, S7-002; after `/clear` the file names the new session before its `SessionStart`, S17-013). Short-lived files of the daemon's `claude bg-spare` processes (`kind: bg`) can name another process's session (contract §13; observed outside the fixtures); this rule keeps them from renaming it or reporting it `idle`.
+- **Only the session's own process counts.** A file is the session's state only if its `pid` equals the envelope `pid` of the session's latest hook event other than `session.end`, never a `pid` of 1 (a hook that starts after `claude` has exited carries the process that adopted it; contract §6 "Liveness", §13 "Owner"). A file whose `pid` has no event of that session yet is pending: it neither renames the session nor sets its `state` until such an event arrives (a new process writes its file before `SessionStart`, S1-001, also on a resume, S7-002; after `/clear` the file names the new session before its `SessionStart`, S17-013). Short-lived files of the daemon's `claude bg-spare` processes (`kind: bg`) can name another process's session (contract §13; observed outside the fixtures); this rule keeps them from renaming it or reporting it `idle`.
 - **Newer wins.** Compare `status_at` with the hook events' times; the newer source says whether the session is working. A hook can't undo an `idle` that is newer than it.
-- **Hide spares.** A file with `spare: true` is a warm `claude bg-spare` process, not a session the user started (`kind: bg`, `name` and `jobId` equal to the short id, `status: idle`). Hide a session while its own file (previous rules) has `spare: true`; a spare file that isn't the session's own changes nothing. A claim gives the process the job's session, with a hook `SessionStart` (`source: resume`) of that session; the spare's own session never becomes the job's (contract §13).
+- **Hide spares.** A file with `spare: true` is a warm `claude bg-spare` process, not a session the user started (`kind: bg`, `name` and `jobId` equal to the short id, `status: idle`). Hide a session while its own file (previous rules) has `spare: true`; a spare file that isn't the session's own changes nothing. A claim gives the process the job's session: its hooks carry the job's `session_id`. The claim's `SessionStart` had `source: resume` in the claim seen in Claude Code 2.1.316 (outside the fixtures), where the spare's own session was not continued, and `source: startup` for a fresh `claude --bg` job (S22-004); see contract §13.
 - **Deleted file = process ended.** Deleted on `/exit` and at the end of `claude -p`. After a crash (`kill -9`) it stays until the next `claude` process starts (S8, S6a), so a present file whose `pid` is not alive is stale.
 - **Missing, unparseable or `state` absent → unknown.** Fall back to the hooks and a timeout. Never guess from an unknown `status`.
